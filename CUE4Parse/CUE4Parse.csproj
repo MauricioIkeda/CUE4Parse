@@ -13,6 +13,8 @@
     <PackageReference Include="GenericReader" />
     <PackageReference Include="Infrablack.UE4Config" />
     <PackageReference Include="LZMA-SDK" />
+    <PackageReference Include="MessagePack" />
+    <PackageReference Include="Microsoft.Bcl.Memory" />
     <PackageReference Include="Newtonsoft.Json" />
     <PackageReference Include="OffiUtils" />
     <PackageReference Include="OodleSharp" />
@@ -22,7 +24,9 @@
     <PackageReference Include="K4os.Compression.LZ4.Streams" />
     <PackageReference Include="SubstreamSharp" />
     <PackageReference Include="System.IO.Hashing" />
+    <PackageReference Include="System.Net.Http" />
     <PackageReference Include="System.Numerics.Tensors"/>
+    <PackageReference Include="System.Text.RegularExpressions" />
     <PackageReference Include="VGAudio" />
     <PackageReference Include="Zlib-ng.NET" />
     <PackageReference Include="ZstdSharp.Port" />

@@ -347,7 +347,6 @@ namespace CUE4Parse.FileProvider.Vfs
         public async Task<int> SubmitKeysAsync(IEnumerable<KeyValuePair<FGuid, FAesKey>> keys)
         {
             var countNewMounts = 0;
-            var tasks = new LinkedList<Task<IAesVfsReader?>>();
             var submittedKeys = keys as IReadOnlyCollection<KeyValuePair<FGuid, FAesKey>> ?? keys.ToArray();
             var submittedKeyGuids = submittedKeys.Select(x => x.Key).ToHashSet();
             var readers = _unloadedVfs.Keys.Where(reader => submittedKeyGuids.Contains(reader.EncryptionKeyGuid)).ToArray();
@@ -355,46 +354,52 @@ namespace CUE4Parse.FileProvider.Vfs
 
             foreach (var (guid, key) in submittedKeys)
             {
-                foreach (var reader in readers.Where(it => it.EncryptionKeyGuid == guid))
+                foreach (var reader in readers
+                             .Where(it => it.EncryptionKeyGuid == guid)
+                             .OrderBy(it => it.Name, StringComparer.OrdinalIgnoreCase))
                 {
-                    if (reader.Game == GAME_FragPunk && reader.Name.Contains("global")) reader.AesKey = key;
+                    if (reader.Game == GAME_FragPunk && reader.Name.Contains("global"))
+                        reader.AesKey = key;
+
                     VerifyGlobalData(reader);
 
                     if (!reader.HasDirectoryIndex)
                         continue;
 
-                    tasks.AddLast(Task.Run(() =>
+                    try
                     {
-                        try
-                        {
-                            reader.MountTo(Files, PathComparer, key, VfsMounted);
-                            _unloadedVfs.TryRemove(reader, out _);
-                            _mountedVfs[reader] = null;
-                            Interlocked.Increment(ref countNewMounts);
-                            return reader;
-                        }
-                        catch (InvalidAesKeyException)
-                        {
-                            // Ignore this
-                        }
-                        catch (Exception e)
-                        {
-                            Log.Warning(e, "Uncaught exception while loading pak file {FileName}", reader.Path.SubstringAfterLast('/'));
-                        }
-                        return null;
-                    }));
+                        // Mount readers sequentially. Some games, including
+                        // Neverness to Everness, may fail intermittently when
+                        // multiple encrypted readers are mounted concurrently.
+                        reader.MountTo(Files, PathComparer, key, VfsMounted);
+
+                        _unloadedVfs.TryRemove(reader, out _);
+                        _mountedVfs[reader] = null;
+                        countNewMounts++;
+
+                        _requiredKeys.TryRemove(reader.EncryptionKeyGuid, out _);
+                        _keys.TryAdd(reader.EncryptionKeyGuid, key);
+                    }
+                    catch (InvalidAesKeyException exception)
+                    {
+                        Log.Warning(
+                            exception,
+                            $"Failed to mount encrypted archive " +
+                            $"{reader.Path.SubstringAfterLast('/')}"
+                        );
+                    }
+                    catch (Exception exception)
+                    {
+                        Log.Warning(
+                            exception,
+                            $"Uncaught exception while loading pak file " +
+                            $"{reader.Path.SubstringAfterLast('/')}"
+                        );
+                    }
                 }
             }
 
-            var completed = await Task.WhenAll(tasks).ConfigureAwait(false);
-            foreach (var it in completed)
-            {
-                var key = it?.AesKey;
-                if (it == null || key == null) continue;
-                _requiredKeys.TryRemove(it.EncryptionKeyGuid, out _);
-                _keys.TryAdd(it.EncryptionKeyGuid, key);
-            }
-
+            await Task.CompletedTask.ConfigureAwait(false);
             return countNewMounts;
         }
 
